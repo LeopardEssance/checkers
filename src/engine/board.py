@@ -178,7 +178,7 @@ class Board:
             new_path     = path + [(land_r, land_c)]
             new_captures = visited_captures + [(mid_r, mid_c)]
 
-            # In American checkers, a move ends immediately on crowning.
+            # A move ends immediately on crowning.
             promoted = piece
             if piece == RED_PIECE   and land_r == 0: promoted = RED_KING
             if piece == BLACK_PIECE and land_r == 7: promoted = BLACK_KING

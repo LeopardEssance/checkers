@@ -1,7 +1,7 @@
 """
 Engine correctness tests (pytest).
 
-Run: pytest tests/
+Run: python -m pytest tests/ -v
 """
 
 import pytest
@@ -139,6 +139,32 @@ class TestMoveApplication:
                     if m.destination[0] == 7)
         new = empty_board.apply_move(promo)
         assert new.grid[7][promo.destination[1]] == BLACK_KING
+
+    def test_promotion_ends_turn(self, empty_board):
+        """After crowning, play passes to the opponent immediately."""
+        empty_board.grid[2][1] = RED_PIECE
+        empty_board.grid[1][2] = BLACK_PIECE
+        empty_board.grid[1][4] = BLACK_PIECE
+        empty_board.grid[5][0] = BLACK_PIECE
+        empty_board.current_player = RED
+
+        promo_capture = next(
+            m for m in empty_board.get_legal_moves(RED)
+            if m.destination == (0, 3)
+        )
+        new = empty_board.apply_move(promo_capture)
+
+        assert new.grid[0][3] == RED_KING
+        assert new.current_player == BLACK
+
+        # A backward capture exists for RED from (0, 3), but it must wait
+        # because crowning ends the turn.
+        red_followups = [
+            m for m in new.get_legal_moves(RED)
+            if m.origin == (0, 3) and m.destination == (2, 5)
+        ]
+        assert red_followups
+        assert all(m.origin != (0, 3) for m in new.get_legal_moves())
 
     def test_immutability(self):
         """apply_move must not mutate the original board."""
