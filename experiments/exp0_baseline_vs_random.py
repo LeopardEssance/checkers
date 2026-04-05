@@ -85,6 +85,7 @@ class GameRecord:
     winner:                str
     baseline_won:          bool
     draw:                  bool
+    draw_reason:           str          # e.g., 'terminal_win', 'threefold_repetition', 'no_progress', 'move_limit'
     move_limit_hit:        bool
     total_moves:           int
     baseline_pieces_final: int
@@ -107,6 +108,7 @@ def _record_from_result(
         winner                = result.winner,
         baseline_won          = (result.winner == baseline_side),
         draw                  = result.draw,
+        draw_reason           = result.draw_reason,
         move_limit_hit        = result.move_limit_hit,
         total_moves           = result.total_moves,
         baseline_pieces_final = result.baseline_pieces_final,
