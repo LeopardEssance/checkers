@@ -15,8 +15,7 @@ env/
 .env/
 
 # Results (generated — committed only when final)
-results/*.csv
-results/*.json
+results/
 
 # IDE
 .vscode/

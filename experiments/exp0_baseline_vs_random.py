@@ -29,8 +29,10 @@ AGGREGATE STATISTICS REPORTED
 
 OUTPUT
 ------
-  results/exp0_baseline_vs_random.json   — full per-game data
-  results/exp0_summary.json              — aggregate stats for report/charts
+    results/exp0_d{depth}_n{games}/exp0_baseline_vs_random.json  — per-run full per-game data
+    results/exp0_d{depth}_n{games}/exp0_summary.json             — per-run aggregate stats
+    results/exp0_baseline_vs_random.json                         — latest per-game snapshot
+    results/exp0_summary.json                                    — latest summary snapshot
 """
 
 from __future__ import annotations
@@ -155,7 +157,11 @@ class AggregateSummary:
     num_games:      int
     timestamp:      str
 
-def _build_summary(records: list[GameRecord]) -> AggregateSummary:
+def _build_summary(
+    records: list[GameRecord],
+    depth: int,
+    num_games: int,
+) -> AggregateSummary:
     n      = len(records)
     wins   = sum(1 for r in records if r.baseline_won)
     losses = sum(1 for r in records if not r.baseline_won and not r.draw)
@@ -196,8 +202,8 @@ def _build_summary(records: list[GameRecord]) -> AggregateSummary:
         opponent_pieces_final_mean = _mean(opponent_pieces),
         opponent_pieces_final_std  = _std(opponent_pieces),
 
-        baseline_depth = BASELINE_DEPTH,
-        num_games      = NUM_GAMES,
+        baseline_depth = depth,
+        num_games      = num_games,
         timestamp      = time.strftime("%Y-%m-%dT%H:%M:%S"),
     )
 
@@ -257,7 +263,7 @@ def run_experiment(
               f"nodes/move={rec.avg_nodes_per_move:>8.1f}  "
               f"ms/move={rec.avg_time_per_move_ms:>7.2f}")
 
-    summary = _build_summary(records)
+    summary = _build_summary(records, depth=depth, num_games=num_games)
 
     # -- Print summary --
     print(f"\n{'='*60}")
@@ -285,18 +291,34 @@ def save_results(
 ) -> None:
     os.makedirs(results_dir, exist_ok=True)
 
-    games_path   = os.path.join(results_dir, "exp0_baseline_vs_random.json")
-    summary_path = os.path.join(results_dir, "exp0_summary.json")
+    run_folder = f"exp0_d{summary.baseline_depth}_n{summary.num_games}"
+    run_dir = os.path.join(results_dir, run_folder)
+    os.makedirs(run_dir, exist_ok=True)
 
-    with open(games_path, "w") as f:
+    run_games_path = os.path.join(run_dir, "exp0_baseline_vs_random.json")
+    run_summary_path = os.path.join(run_dir, "exp0_summary.json")
+
+    # Keep latest snapshots for convenience and backward compatibility.
+    latest_games_path = os.path.join(results_dir, "exp0_baseline_vs_random.json")
+    latest_summary_path = os.path.join(results_dir, "exp0_summary.json")
+
+    with open(run_games_path, "w") as f:
         json.dump([asdict(r) for r in records], f, indent=2)
 
-    with open(summary_path, "w") as f:
+    with open(run_summary_path, "w") as f:
+        json.dump(asdict(summary), f, indent=2)
+
+    with open(latest_games_path, "w") as f:
+        json.dump([asdict(r) for r in records], f, indent=2)
+
+    with open(latest_summary_path, "w") as f:
         json.dump(asdict(summary), f, indent=2)
 
     print(f"\nResults saved:")
-    print(f"  {games_path}")
-    print(f"  {summary_path}")
+    print(f"  {run_games_path}")
+    print(f"  {run_summary_path}")
+    print(f"  {latest_games_path}")
+    print(f"  {latest_summary_path}")
 
 # ---------------------------------------------------------------------------
 # Entry point
