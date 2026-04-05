@@ -29,10 +29,10 @@ AGGREGATE STATISTICS REPORTED
 
 OUTPUT
 ------
-    results/exp0_d{depth}_n{games}/exp0_baseline_vs_random.json  — per-run full per-game data
-    results/exp0_d{depth}_n{games}/exp0_summary.json             — per-run aggregate stats
-    results/exp0_baseline_vs_random.json                         — latest per-game snapshot
-    results/exp0_summary.json                                    — latest summary snapshot
+    results/exp0/baseline_vs_random/d{depth}_n{games}/exp0_baseline_vs_random.json  — per-run full per-game data
+    results/exp0/baseline_vs_random/d{depth}_n{games}/exp0_summary.json             — per-run aggregate stats
+    results/exp0/baseline_vs_random/exp0_baseline_vs_random.json                     — latest per-game snapshot
+    results/exp0/baseline_vs_random/exp0_summary.json                                — latest summary snapshot
 """
 
 from __future__ import annotations
@@ -291,18 +291,19 @@ def save_results(
     summary: AggregateSummary,
     results_dir: str = RESULTS_DIR,
 ) -> None:
-    os.makedirs(results_dir, exist_ok=True)
+    base_dir = os.path.join(results_dir, "exp0", "baseline_vs_random")
+    os.makedirs(base_dir, exist_ok=True)
 
-    run_folder = f"exp0_d{summary.baseline_depth}_n{summary.num_games}"
-    run_dir = os.path.join(results_dir, run_folder)
+    run_folder = f"d{summary.baseline_depth}_n{summary.num_games}"
+    run_dir = os.path.join(base_dir, run_folder)
     os.makedirs(run_dir, exist_ok=True)
 
     run_games_path = os.path.join(run_dir, "exp0_baseline_vs_random.json")
     run_summary_path = os.path.join(run_dir, "exp0_summary.json")
 
     # Keep latest snapshots for convenience and backward compatibility.
-    latest_games_path = os.path.join(results_dir, "exp0_baseline_vs_random.json")
-    latest_summary_path = os.path.join(results_dir, "exp0_summary.json")
+    latest_games_path = os.path.join(base_dir, "exp0_baseline_vs_random.json")
+    latest_summary_path = os.path.join(base_dir, "exp0_summary.json")
 
     with open(run_games_path, "w") as f:
         json.dump([asdict(r) for r in records], f, indent=2)

@@ -6,8 +6,8 @@ Default usage (baseline files):
 
 Custom usage:
     python -m experiments.plot_performance \
-        --dataset Baseline results/exp0_baseline_vs_random.json results/exp0_summary.json \
-        --output-dir results/images
+        --dataset Baseline results/exp0/baseline_vs_random/exp0_baseline_vs_random.json results/exp0/baseline_vs_random/exp0_summary.json \
+        --output-dir results/exp0
 
 The --dataset flag can be provided multiple times to compare agents.
 Each --dataset takes 3 arguments:
@@ -25,9 +25,9 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 
-DEFAULT_GAMES_PATH = os.path.join("results", "exp0_baseline_vs_random.json")
-DEFAULT_SUMMARY_PATH = os.path.join("results", "exp0_summary.json")
-DEFAULT_IMAGES_DIR = os.path.join("results", "images")
+DEFAULT_GAMES_PATH = os.path.join("results", "exp0", "baseline_vs_random", "exp0_baseline_vs_random.json")
+DEFAULT_SUMMARY_PATH = os.path.join("results", "exp0", "baseline_vs_random", "exp0_summary.json")
+DEFAULT_IMAGES_DIR = os.path.join("results", "exp0")
 
 @dataclass
 class ExperimentDataset:
@@ -51,12 +51,24 @@ def _infer_experiment_prefix(games_path: str, fallback_label: str) -> str:
     return _slug(fallback_label) or "experiment"
 
 
+def _infer_matchup_folder(games_path: str) -> str:
+    path = games_path.replace("\\", "/").lower()
+    if "/baseline_vs_move_ordering/" in path:
+        return "baseline_vs_move_ordering"
+    if "/baseline_vs_random/" in path:
+        return "baseline_vs_random"
+    base = os.path.basename(path)
+    if "move_ordering" in base:
+        return "baseline_vs_move_ordering"
+    return "baseline_vs_random"
+
+
 def _infer_run_folder_name(prefix: str, summary: dict[str, Any]) -> str:
     depth = summary.get("baseline_depth")
     total_games = summary.get("total_games", summary.get("num_games"))
     if depth is None or total_games is None:
         return prefix
-    return f"{prefix}_d{depth}_n{total_games}"
+    return f"d{depth}_n{total_games}"
 
 
 def _read_json(path: str) -> Any:
@@ -83,6 +95,10 @@ def _extract_series(games: list[dict[str, Any]], key: str) -> list[float]:
         values.append(float(raw))
     return values
 
+
+def _has_key_in_games(games: list[dict[str, Any]], key: str) -> bool:
+    return any(key in g for g in games)
+
 def _dataset_meta(dataset: ExperimentDataset) -> tuple[str, str]:
     depth = dataset.summary.get("baseline_depth", "?")
     total_games = dataset.summary.get("total_games", dataset.summary.get("num_games", "?"))
@@ -95,11 +111,25 @@ def _label_with_meta(dataset: ExperimentDataset, multiline: bool = False) -> str
     return f"{dataset.label} (d={depth}, n={total_games})"
 
 def _plot_outcomes(ax: plt.Axes, datasets: list[ExperimentDataset]) -> None:
-    x_positions = list(range(len(datasets)))
+    entries: list[tuple[str, float, float, float]] = []
 
-    win_vals = [float(d.summary.get("wins", 0)) for d in datasets]
-    loss_vals = [float(d.summary.get("losses", 0)) for d in datasets]
-    draw_vals = [float(d.summary.get("draws", 0)) for d in datasets]
+    for d in datasets:
+        wins = float(d.summary.get("wins", 0))
+        losses = float(d.summary.get("losses", 0))
+        draws = float(d.summary.get("draws", 0))
+        depth, total_games = _dataset_meta(d)
+
+        # For head-to-head runs, show both agents explicitly.
+        if "avg_nodes_per_move_baseline_mean" in d.summary:
+            entries.append((f"Move Ordering (d={depth}, n={total_games})", wins, losses, draws))
+            entries.append((f"Baseline (d={depth}, n={total_games})", losses, wins, draws))
+        else:
+            entries.append((f"{d.label} (d={depth}, n={total_games})", wins, losses, draws))
+
+    x_positions = list(range(len(entries)))
+    win_vals = [e[1] for e in entries]
+    loss_vals = [e[2] for e in entries]
+    draw_vals = [e[3] for e in entries]
 
     width = 0.25
     ax.bar([x - width for x in x_positions], win_vals, width=width, label="Wins", color="#2E8B57")
@@ -107,26 +137,48 @@ def _plot_outcomes(ax: plt.Axes, datasets: list[ExperimentDataset]) -> None:
     ax.bar([x + width for x in x_positions], draw_vals, width=width, label="Draws", color="#696969")
 
     ax.set_xticks(x_positions)
-    ax.set_xticklabels([_label_with_meta(d, multiline=True) for d in datasets], rotation=0)
+    ax.set_xticklabels([e[0] for e in entries], rotation=0)
     ax.set_title("Outcomes")
     ax.set_ylabel("Game Count")
     ax.grid(axis="y", alpha=0.25)
     ax.legend(frameon=False)
 
-def _plot_metric_by_game(ax: plt.Axes, datasets: list[ExperimentDataset], game_key: str, title: str, y_label: str) -> None:
+def _plot_metric_by_game(
+    ax: plt.Axes,
+    datasets: list[ExperimentDataset],
+    game_key: str,
+    title: str,
+    y_label: str,
+    baseline_game_key: str | None = None,
+) -> None:
     for idx, dataset in enumerate(datasets):
         series = _extract_series(dataset.games, game_key)
         if not series:
             continue
         x = list(range(1, len(series) + 1))
+        line_color = "#2E8B57" if baseline_game_key else PALETTE[idx % len(PALETTE)]
         ax.plot(
             x,
             series,
             label=_label_with_meta(dataset),
-            color=PALETTE[idx % len(PALETTE)],
+            color=line_color,
             linewidth=1.6,
             alpha=0.9,
         )
+
+        if baseline_game_key and _has_key_in_games(dataset.games, baseline_game_key):
+            baseline_series = _extract_series(dataset.games, baseline_game_key)
+            if baseline_series:
+                depth, total_games = _dataset_meta(dataset)
+                baseline_label = f"Baseline (d={depth}, n={total_games})"
+                ax.plot(
+                    x,
+                    baseline_series,
+                    label=baseline_label,
+                    color="#1f77b4",
+                    linewidth=1.8,
+                    alpha=0.9,
+                )
 
     ax.set_title(title)
     ax.set_xlabel("Game #")
@@ -143,12 +195,20 @@ def _save_outcomes_chart(datasets: list[ExperimentDataset], output_path: str) ->
 
 def _save_nodes_chart(datasets: list[ExperimentDataset], output_path: str) -> None:
     fig, ax = plt.subplots(figsize=(10, 6))
+    has_baseline_series = any(
+        _has_key_in_games(d.games, "baseline_avg_nodes_per_move") for d in datasets
+    )
+
+    title = "Nodes per Move by Game"
+    baseline_key = "baseline_avg_nodes_per_move" if has_baseline_series else None
+
     _plot_metric_by_game(
         ax,
         datasets,
         game_key="avg_nodes_per_move",
-        title="Average Nodes Expanded per Move (by Game)",
+        title=title,
         y_label="Nodes / Move",
+        baseline_game_key=baseline_key,
     )
     fig.tight_layout()
     fig.savefig(output_path, dpi=180)
@@ -156,12 +216,20 @@ def _save_nodes_chart(datasets: list[ExperimentDataset], output_path: str) -> No
 
 def _save_time_chart(datasets: list[ExperimentDataset], output_path: str) -> None:
     fig, ax = plt.subplots(figsize=(10, 6))
+    has_baseline_series = any(
+        _has_key_in_games(d.games, "baseline_avg_time_per_move_ms") for d in datasets
+    )
+
+    title = "Time per Move by Game"
+    baseline_key = "baseline_avg_time_per_move_ms" if has_baseline_series else None
+
     _plot_metric_by_game(
         ax,
         datasets,
         game_key="avg_time_per_move_ms",
-        title="Average Time per Move (ms) (by Game)",
+        title=title,
         y_label="Milliseconds / Move",
+        baseline_game_key=baseline_key,
     )
     fig.tight_layout()
     fig.savefig(output_path, dpi=180)
@@ -172,12 +240,11 @@ def build_graph_images(datasets: list[ExperimentDataset], output_dir: str, file_
         raise ValueError("No datasets provided")
 
     base = file_prefix if file_prefix else "comparison"
-    experiment_output_dir = os.path.join(output_dir, base)
-    os.makedirs(experiment_output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
-    outcomes_path = os.path.join(experiment_output_dir, f"{base}_winrate_outcomes.png")
-    nodes_path = os.path.join(experiment_output_dir, f"{base}_avg_nodes_per_move.png")
-    time_path = os.path.join(experiment_output_dir, f"{base}_avg_time_per_move.png")
+    outcomes_path = os.path.join(output_dir, f"{base}_winrate_outcomes.png")
+    nodes_path = os.path.join(output_dir, f"{base}_avg_nodes_per_move.png")
+    time_path = os.path.join(output_dir, f"{base}_avg_time_per_move.png")
 
     _save_outcomes_chart(datasets, outcomes_path)
     _save_nodes_chart(datasets, nodes_path)
@@ -219,10 +286,13 @@ def main() -> None:
     if len(datasets) == 1:
         experiment_prefix = _infer_experiment_prefix(source_games_path, datasets[0].label)
         prefix = _infer_run_folder_name(experiment_prefix, datasets[0].summary)
+        matchup_folder = _infer_matchup_folder(source_games_path)
+        output_root = os.path.join(args.output_dir, matchup_folder, prefix, "images")
     else:
         prefix = "comparison"
+        output_root = args.output_dir
 
-    output_paths = build_graph_images(datasets, args.output_dir, prefix)
+    output_paths = build_graph_images(datasets, output_root, prefix)
     print("Saved performance graphs:")
     for path in output_paths:
         print(f"  {path}")
