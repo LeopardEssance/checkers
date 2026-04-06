@@ -100,7 +100,7 @@ def _has_key_in_games(games: list[dict[str, Any]], key: str) -> bool:
     return any(key in g for g in games)
 
 def _dataset_meta(dataset: ExperimentDataset) -> tuple[str, str]:
-    depth = dataset.summary.get("baseline_depth", "?")
+    depth = dataset.summary.get("baseline_depth", dataset.summary.get("transposition_depth", "?"))
     total_games = dataset.summary.get("total_games", dataset.summary.get("num_games", "?"))
     return str(depth), str(total_games)
 

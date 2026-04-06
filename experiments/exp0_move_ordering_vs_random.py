@@ -189,7 +189,7 @@ def run_experiment(
 
         status = "WIN" if rec.ordering_won else ("DRAW" if rec.draw else "LOSS")
         print(
-            f"  Game {game_id:>3}  [ORD=RED]  {status:4}  "
+            f"  Game {game_id:>3}  [RED]  {status:4}  "
             f"moves={rec.total_moves:>3}  "
             f"ord nodes/move={rec.ordering_avg_nodes_per_move:>8.1f}"
         )
@@ -236,7 +236,7 @@ def run_experiment(
 
         status = "WIN" if rec.ordering_won else ("DRAW" if rec.draw else "LOSS")
         print(
-            f"  Game {game_id:>3}  [ORD=BLK]  {status:4}  "
+            f"  Game {game_id:>3}  [BLK]  {status:4}  "
             f"moves={rec.total_moves:>3}  "
             f"ord nodes/move={rec.ordering_avg_nodes_per_move:>8.1f}"
         )
