@@ -88,10 +88,19 @@ class BaselineAgent:
     No move ordering, no transposition table.
     """
 
-    def __init__(self, player: str, depth: int = 5, time_limit: float = 5.0):
+    def __init__(
+        self,
+        player: str,
+        depth: int = 5,
+        time_limit: float = 5.0,
+        rng: Optional[random.Random] = None,
+        tie_break_eps: float = 1e-9,
+    ):
         self.player     = player
         self.depth      = depth
         self.time_limit = time_limit
+        self.rng        = rng
+        self.tie_break_eps = tie_break_eps
 
         self.nodes_expanded = 0
         self.start_time     = 0.0
@@ -107,6 +116,7 @@ class BaselineAgent:
 
         best_move  = None
         best_score = float("-inf")
+        best_moves: list[Move] = []
 
         for move in legal_moves:
             score = self._minimax(
@@ -116,9 +126,17 @@ class BaselineAgent:
                 beta=float("inf"),
                 maximizing=False,
             )
-            if score > best_score:
+            if score > best_score + self.tie_break_eps:
                 best_score = score
-                best_move  = move
+                best_moves = [move]
+            elif abs(score - best_score) <= self.tie_break_eps:
+                best_moves.append(move)
+
+        if best_moves:
+            if self.rng is not None:
+                best_move = self.rng.choice(best_moves)
+            else:
+                best_move = best_moves[0]
 
         return best_move
 
@@ -168,10 +186,15 @@ class BaselineAgent:
 class RandomAgent:
     """Selects a uniformly random legal move. Used as a control opponent. Woohoo random moves!"""
 
-    def __init__(self, player: str):
+    def __init__(self, player: str, rng: Optional[random.Random] = None):
         self.player         = player
         self.nodes_expanded = 0
+        self.rng            = rng
 
     def choose_move(self, board: Board) -> Optional[Move]:
         moves = board.get_legal_moves(self.player)
-        return random.choice(moves) if moves else None
+        if not moves:
+            return None
+        if self.rng is not None:
+            return self.rng.choice(moves)
+        return random.choice(moves)

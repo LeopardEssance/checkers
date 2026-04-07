@@ -12,6 +12,7 @@ Both heuristics can be toggled independently for ablation.
 """
 
 import time
+import random
 from collections import defaultdict
 from typing import Optional, List, Dict, Tuple
 
@@ -37,12 +38,16 @@ class MoveOrderingAgent:
         time_limit:  float = 5.0,
         use_killer:  bool  = True,
         use_history: bool  = True,
+        rng: Optional[random.Random] = None,
+        tie_break_eps: float = 1e-9,
     ):
         self.player      = player
         self.depth       = depth
         self.time_limit  = time_limit
         self.use_killer  = use_killer
         self.use_history = use_history
+        self.rng         = rng
+        self.tie_break_eps = tie_break_eps
 
         # Killer table: killer_table[ply] = [Move, ...]
         self.killer_table:  Dict[int, List[Move]] = defaultdict(list)
@@ -100,6 +105,7 @@ class MoveOrderingAgent:
 
         best_move  = None
         best_score = float("-inf")
+        best_moves: List[Move] = []
         alpha, beta = float("-inf"), float("inf")
 
         for move in self._order_moves(legal_moves, ply=0):
@@ -107,10 +113,18 @@ class MoveOrderingAgent:
                                   depth=self.depth - 1,
                                   alpha=alpha, beta=beta,
                                   maximizing=False, ply=1)
-            if score > best_score:
+            if score > best_score + self.tie_break_eps:
                 best_score = score
-                best_move  = move
+                best_moves = [move]
+            elif abs(score - best_score) <= self.tie_break_eps:
+                best_moves.append(move)
             alpha = max(alpha, score)
+
+        if best_moves:
+            if self.rng is not None:
+                best_move = self.rng.choice(best_moves)
+            else:
+                best_move = best_moves[0]
 
         return best_move
 

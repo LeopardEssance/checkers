@@ -97,11 +97,15 @@ class TranspositionAgent:
         depth:      int   = 5,
         time_limit: float = 5.0,
         use_tt:     bool  = True,
+        rng: Optional[random.Random] = None,
+        tie_break_eps: float = 1e-9,
     ):
         self.player     = player
         self.depth      = depth
         self.time_limit = time_limit
         self.use_tt     = use_tt
+        self.rng        = rng
+        self.tie_break_eps = tie_break_eps
 
         self.hasher = ZobristHasher()
         self.tt:    Dict[int, TTEntry] = {}
@@ -159,6 +163,7 @@ class TranspositionAgent:
 
         best_move  = None
         best_score = float("-inf")
+        best_moves: list[Move] = []
         alpha, beta = float("-inf"), float("inf")
 
         board_hash = self.hasher.hash_board(board)
@@ -169,10 +174,18 @@ class TranspositionAgent:
                                   depth=self.depth - 1,
                                   alpha=alpha, beta=beta,
                                   maximizing=False, ply=1)
-            if score > best_score:
+            if score > best_score + self.tie_break_eps:
                 best_score = score
-                best_move  = move
+                best_moves = [move]
+            elif abs(score - best_score) <= self.tie_break_eps:
+                best_moves.append(move)
             alpha = max(alpha, score)
+
+        if best_moves:
+            if self.rng is not None:
+                best_move = self.rng.choice(best_moves)
+            else:
+                best_move = best_moves[0]
 
         return best_move
 
@@ -180,6 +193,7 @@ class TranspositionAgent:
                   maximizing: bool, ply: int) -> float:
         self.nodes_expanded += 1
         orig_alpha = alpha
+        orig_beta = beta
 
         if time.time() - self.start_time >= self.time_limit:
             return evaluate(board, self.player)
@@ -245,7 +259,7 @@ class TranspositionAgent:
 
         if self.use_tt:
             if   value <= orig_alpha: flag = TTFlag.UPPERBOUND
-            elif value >= beta:       flag = TTFlag.LOWERBOUND
+            elif value >= orig_beta:  flag = TTFlag.LOWERBOUND
             else:                     flag = TTFlag.EXACT
             self._tt_store(board_hash, value, depth, flag, best_move)
 
