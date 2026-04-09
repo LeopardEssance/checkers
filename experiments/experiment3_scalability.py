@@ -353,84 +353,161 @@ def save_results(
 
 
 def _save_graphs(
-    records: list[ScalabilityGameRecord],
     summary: ScalabilityExperimentSummary,
     results_dir: str = RESULTS_DIR,
+    output_images_dir: str | None = None,
 ) -> list[str]:
-    base_dir = os.path.join(results_dir, "experiment3_scalability")
-    depth_span = f"{min(summary.depths)}to{max(summary.depths)}"
-    run_folder = f"d{depth_span}_n{summary.games_per_side * 2}"
-    images_dir = os.path.join(base_dir, run_folder, "images")
+    if output_images_dir is None:
+        base_dir = os.path.join(results_dir, "experiment3_scalability")
+        depth_span = f"{min(summary.depths)}to{max(summary.depths)}"
+        run_folder = f"d{depth_span}_n{summary.games_per_side * 2}"
+        images_dir = os.path.join(base_dir, run_folder, "images")
+    else:
+        images_dir = output_images_dir
+
     os.makedirs(images_dir, exist_ok=True)
 
     output_paths: list[str] = []
 
-    records_sorted = sorted(records, key=lambda record: record.game_id)
+    # Compare each configuration against itself across depth values.
+    by_config: dict[str, list[ScalabilityDepthConfigSummary]] = {config: [] for config in summary.configurations}
+    for item in summary.depth_config_summaries:
+        by_config.setdefault(item.configuration, []).append(item)
 
-    for depth in summary.depths:
-        # Per-game average nodes chart for this depth (all configurations together).
-        nodes_path = os.path.join(images_dir, f"scalability_d{depth}_nodes_per_game.png")
-        fig, ax = plt.subplots(figsize=(10, 6))
-        for configuration in summary.configurations:
-            bucket = [
-                record
-                for record in records_sorted
-                if record.depth == depth and record.configuration == configuration
-            ]
-            if not bucket:
-                continue
-            x_values = list(range(1, len(bucket) + 1))
-            node_values = [record.config_avg_nodes_per_move for record in bucket]
-            ax.plot(
-                x_values,
-                node_values,
-                label=configuration,
-                color=CONFIG_COLORS.get(configuration, "#0072B2"),
-                linewidth=2.0,
-                alpha=0.95,
-            )
-        ax.set_title(f"Experiment 3 Scalability: Nodes per Game | Depth {depth}")
-        ax.set_xlabel("Game #")
-        ax.set_ylabel("Nodes / Move")
-        ax.grid(alpha=0.25)
-        ax.legend(frameon=False, loc="upper left")
-        fig.tight_layout()
-        fig.savefig(nodes_path, dpi=180)
-        plt.close(fig)
-        output_paths.append(nodes_path)
+    for config in by_config:
+        by_config[config] = sorted(by_config[config], key=lambda x: x.depth)
 
-        # Per-game average time chart for this depth (all configurations together).
-        time_path = os.path.join(images_dir, f"scalability_d{depth}_time_per_game_ms.png")
-        fig, ax = plt.subplots(figsize=(10, 6))
-        for configuration in summary.configurations:
-            bucket = [
-                record
-                for record in records_sorted
-                if record.depth == depth and record.configuration == configuration
-            ]
-            if not bucket:
-                continue
-            x_values = list(range(1, len(bucket) + 1))
-            time_values = [record.config_avg_time_per_move_ms for record in bucket]
-            ax.plot(
-                x_values,
-                time_values,
-                label=configuration,
-                color=CONFIG_COLORS.get(configuration, "#0072B2"),
-                linewidth=2.0,
-                alpha=0.95,
-            )
-        ax.set_title(f"Experiment 3 Scalability: Time per Game | Depth {depth}")
-        ax.set_xlabel("Game #")
-        ax.set_ylabel("Milliseconds / Move")
-        ax.grid(alpha=0.25)
-        ax.legend(frameon=False, loc="upper left")
-        fig.tight_layout()
-        fig.savefig(time_path, dpi=180)
-        plt.close(fig)
-        output_paths.append(time_path)
+    # Win-rate comparison by depth as grouped bars.
+    win_path = os.path.join(images_dir, "scalability_compare_win_rate_by_depth.png")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    depths_sorted = sorted(summary.depths)
+    x_positions = list(range(len(depths_sorted)))
+    num_configs = max(1, len(summary.configurations))
+    bar_width = min(0.8 / num_configs, 0.28)
+    start_offset = -0.5 * bar_width * (num_configs - 1)
+
+    for idx, configuration in enumerate(summary.configurations):
+        points = by_config.get(configuration, [])
+        rate_by_depth = {point.depth: point.win_rate_pct for point in points}
+        y_values = [rate_by_depth.get(depth, 0.0) for depth in depths_sorted]
+        x_values = [x + start_offset + idx * bar_width for x in x_positions]
+
+        ax.bar(
+            x_values,
+            y_values,
+            width=bar_width,
+            label=configuration,
+            color=CONFIG_COLORS.get(configuration, "#0072B2"),
+            alpha=0.9,
+            edgecolor="white",
+            linewidth=0.6,
+        )
+
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(depths_sorted)
+    ax.set_title("Experiment 3: Win Rate by Depth")
+    ax.set_xlabel("Depth")
+    ax.set_ylabel("Win Rate (%)")
+    ax.set_ylim(0, 100)
+    ax.grid(alpha=0.25)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(win_path, dpi=180)
+    plt.close(fig)
+    output_paths.append(win_path)
+
+    # Nodes-per-move comparison by depth with standard deviation bars.
+    nodes_path = os.path.join(images_dir, "scalability_compare_nodes_by_depth.png")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for configuration, points in by_config.items():
+        if not points:
+            continue
+        x_values = [point.depth for point in points]
+        means = [point.avg_nodes_per_move_mean for point in points]
+        stds = [point.avg_nodes_per_move_std for point in points]
+        ax.errorbar(
+            x_values,
+            means,
+            yerr=stds,
+            marker="o",
+            capsize=4,
+            label=configuration,
+            color=CONFIG_COLORS.get(configuration, "#0072B2"),
+            linewidth=2.0,
+            alpha=0.95,
+        )
+    ax.set_title("Experiment 3: Nodes per Move by Depth")
+    ax.set_xlabel("Depth")
+    ax.set_ylabel("Nodes / Move (mean +/- sd)")
+    ax.grid(alpha=0.25)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(nodes_path, dpi=180)
+    plt.close(fig)
+    output_paths.append(nodes_path)
+
+    # Time-per-move comparison by depth with standard deviation bars.
+    time_path = os.path.join(images_dir, "scalability_compare_time_by_depth_ms.png")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for configuration, points in by_config.items():
+        if not points:
+            continue
+        x_values = [point.depth for point in points]
+        means = [point.avg_time_per_move_ms_mean for point in points]
+        stds = [point.avg_time_per_move_ms_std for point in points]
+        ax.errorbar(
+            x_values,
+            means,
+            yerr=stds,
+            marker="o",
+            capsize=4,
+            label=configuration,
+            color=CONFIG_COLORS.get(configuration, "#0072B2"),
+            linewidth=2.0,
+            alpha=0.95,
+        )
+    ax.set_title("Experiment 3: Time per Move by Depth")
+    ax.set_xlabel("Depth")
+    ax.set_ylabel("Milliseconds / Move (mean +/- sd)")
+    ax.grid(alpha=0.25)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(time_path, dpi=180)
+    plt.close(fig)
+    output_paths.append(time_path)
 
     return output_paths
+
+
+def _load_summary_from_json(summary_path: str) -> ScalabilityExperimentSummary:
+    with open(summary_path, "r", encoding="utf-8") as file_handle:
+        payload = json.load(file_handle)
+
+    rows = [
+        ScalabilityDepthConfigSummary(
+            depth=int(item["depth"]),
+            configuration=str(item["configuration"]),
+            total_games=int(item["total_games"]),
+            wins=int(item["wins"]),
+            losses=int(item["losses"]),
+            draws=int(item["draws"]),
+            win_rate_pct=float(item["win_rate_pct"]),
+            avg_nodes_per_move_mean=float(item["avg_nodes_per_move_mean"]),
+            avg_nodes_per_move_std=float(item["avg_nodes_per_move_std"]),
+            avg_time_per_move_ms_mean=float(item["avg_time_per_move_ms_mean"]),
+            avg_time_per_move_ms_std=float(item["avg_time_per_move_ms_std"]),
+        )
+        for item in payload.get("depth_config_summaries", [])
+    ]
+
+    return ScalabilityExperimentSummary(
+        depths=[int(depth) for depth in payload.get("depths", [])],
+        configurations=[str(config) for config in payload.get("configurations", [])],
+        total_games=int(payload.get("total_games", 0)),
+        games_per_side=int(payload.get("games_per_side", 0)),
+        timestamp=str(payload.get("timestamp", "")),
+        depth_config_summaries=rows,
+    )
 
 
 if __name__ == "__main__":
@@ -458,10 +535,31 @@ if __name__ == "__main__":
         default=0,
         help="Number of opening plies chosen randomly before normal search",
     )
+    parser.add_argument(
+        "--plot-from-run-dir",
+        type=str,
+        default=None,
+        help="Reuse an existing run directory and regenerate graphs from experiment3_summary.json without running games",
+    )
     parser.add_argument("--verbose", action="store_true", help="Print board each move")
     parser.add_argument("--no-save", action="store_true", help="Skip writing results to disk")
     parser.add_argument("--no-plot", action="store_true", help="Skip graph generation")
     args = parser.parse_args()
+
+    if args.plot_from_run_dir:
+        summary_path = os.path.join(args.plot_from_run_dir, "experiment3_summary.json")
+        if not os.path.isfile(summary_path):
+            raise FileNotFoundError(f"Missing summary file: {summary_path}")
+
+        summary = _load_summary_from_json(summary_path)
+        graph_paths = _save_graphs(
+            summary,
+            output_images_dir=os.path.join(args.plot_from_run_dir, "images"),
+        )
+        print("\nSaved graphs from existing run:")
+        for graph_path in graph_paths:
+            print(f"  {graph_path}")
+        raise SystemExit(0)
 
     records, summary = run_experiment(
         games_per_side=max(1, args.games),
@@ -479,7 +577,7 @@ if __name__ == "__main__":
     if args.no_plot:
         raise SystemExit(0)
 
-    graph_paths = _save_graphs(records, summary)
+    graph_paths = _save_graphs(summary)
     print("\nSaved graphs:")
     for graph_path in graph_paths:
         print(f"  {graph_path}")

@@ -391,56 +391,8 @@ def _plot_exp2(games: list[dict[str, Any]], summary: dict[str, Any], output_dir:
 
 
 def _plot_exp3(summary: dict[str, Any], output_dir: str) -> list[str]:
-    rows = summary.get("depth_config_summaries", [])
-    if not isinstance(rows, list) or not rows:
-        return []
-
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        grouped[str(row.get("configuration", "Unknown"))].append(row)
-
-    fig, axes = plt.subplots(1, 3, figsize=(16.5, 5.6), sharex=False)
-    ax_win, ax_nodes, ax_time = axes
-
-    for idx, (configuration, items) in enumerate(sorted(grouped.items(), key=lambda item: item[0])):
-        ordered = sorted(items, key=lambda item: int(item.get("depth", 0)))
-        depths = [int(item.get("depth", 0)) for item in ordered]
-        color = PALETTE[idx % len(PALETTE)]
-
-        win_rate = [float(item.get("win_rate_pct", 0.0)) for item in ordered]
-        ax_win.plot(depths, win_rate, marker="o", linewidth=2.0, color=color, label=configuration)
-
-        node_mean = [float(item.get("avg_nodes_per_move_mean", 0.0)) for item in ordered]
-        node_std = [float(item.get("avg_nodes_per_move_std", 0.0)) for item in ordered]
-        ax_nodes.errorbar(depths, node_mean, yerr=node_std, marker="o", linewidth=2.0, color=color)
-
-        time_mean = [float(item.get("avg_time_per_move_ms_mean", 0.0)) for item in ordered]
-        time_std = [float(item.get("avg_time_per_move_ms_std", 0.0)) for item in ordered]
-        ax_time.errorbar(depths, time_mean, yerr=time_std, marker="o", linewidth=2.0, color=color)
-
-    ax_win.set_title("Win Rate vs Depth")
-    ax_win.set_ylabel("Win Rate (%)")
-    ax_win.set_xlabel("Depth")
-    ax_win.set_ylim(0, 100)
-    ax_win.grid(alpha=0.25)
-
-    ax_nodes.set_title("Nodes/Move vs Depth")
-    ax_nodes.set_ylabel("Avg Nodes/Move (mean ± sd)")
-    ax_nodes.set_xlabel("Depth")
-    ax_nodes.grid(alpha=0.25)
-
-    ax_time.set_title("Time/Move vs Depth")
-    ax_time.set_ylabel("Avg Time/Move ms (mean ± sd)")
-    ax_time.set_xlabel("Depth")
-    ax_time.grid(alpha=0.25)
-
-    fig.suptitle("Experiment 3: Scalability Summary", y=1.02)
-    handles, labels = ax_win.get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=max(1, len(labels)), frameon=False)
-
-    output_path = os.path.join(output_dir, "readable_scalability_summary.png")
-    _save_figure(fig, output_path)
-    return [output_path]
+    # Disabled experiment 3 readable summary is not generated.
+    return []
 
 
 def _render_target(target: PlotTarget) -> list[str]:
