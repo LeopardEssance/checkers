@@ -36,11 +36,13 @@ PIECE_TYPES = [RED_PIECE, RED_KING, BLACK_PIECE, BLACK_KING]
 
 class ZobristHasher:
     """
-    Assigns a random 64-bit key to every (row, col, piece_type) combination
-    and a separate key for the side-to-move.
-
-    Board hash = XOR of all occupied-square keys
-    XOR black_to_move_key (only when BLACK's turn).
+    Zobrist hashing: Fast, deterministic board state fingerprints.
+    
+    Each (row, col, piece_type) gets a random 64-bit key. Board hash is computed
+    by XORing keys of all occupied squares, with an additional bit for side-to-move.
+    
+    Collisions are extremely rare (virtually impossible for different positions).
+    Used by transposition table to quickly check if a position has been seen before.
     """
     def __init__(self, seed: int = 12345):
         rng = random.Random(seed)
@@ -51,7 +53,7 @@ class ZobristHasher:
         self.black_to_move_key = rng.getrandbits(64)
 
     def hash_board(self, board: Board) -> int:
-        """Full hash recomputed from scratch."""
+        """Compute full hash from scratch by XORing all occupied-square keys."""
         h = 0
         for r in range(8):
             for c in range(8):
@@ -67,6 +69,18 @@ class ZobristHasher:
 # ---------------------------------------------------------------------------
 
 class TTEntry:
+    """
+    Transposition table entry: stores result of a minimax search at a position.
+    
+    Attributes:
+      score     : the value returned by that search
+      depth     : search depth at which this value was computed
+      flag      : indicates meaning of score relative to alpha-beta window:
+                  - EXACT: score is exact within [alpha, beta]
+                  - LOWERBOUND: score >= beta (a cutoff occurred)
+                  - UPPERBOUND: score <= alpha (all moves were worse)
+      best_move : the best move found in that search (for move ordering)
+    """
     __slots__ = ("score", "depth", "flag", "best_move")
 
     def __init__(self, score: float, depth: int, flag: TTFlag,
@@ -191,6 +205,22 @@ class TranspositionAgent:
 
     def _minimax(self, board: Board, depth: int, alpha: float, beta: float,
                   maximizing: bool, ply: int) -> float:
+        """
+        Minimax with transposition table (TT) integration.
+        
+        Flow:
+          1. Increment node count and check time limit
+          2. Check TT for existing entry at this position and depth:
+             - EXACT flag: return score directly
+             - LOWERBOUND: tighten alpha (improve guarantee for maximizer)
+             - UPPERBOUND: tighten beta (improve guarantee for minimizer)
+             - If alpha >= beta after tightening, pruning occurs
+          3. Recurse with alpha-beta pruning
+          4. Store result in TT with appropriate flag based on final value:
+             - EXACT if value is within [orig_alpha, orig_beta]
+             - LOWERBOUND if value >= orig_beta (minimizer couldn't prevent this)
+             - UPPERBOUND if value <= orig_alpha (maximizer couldn't guarantee this)
+        """
         self.nodes_expanded += 1
         orig_alpha = alpha
         orig_beta = beta
@@ -205,15 +235,17 @@ class TranspositionAgent:
         board_hash = self.hasher.hash_board(board) if self.use_tt else None
         tt_best    = None
 
+        # === TT lookup ===
         if self.use_tt and board_hash in self.tt:
             entry = self.tt[board_hash]
+            # Only use TT entry if it was computed at sufficient depth
             if entry.depth >= depth:
                 self.tt_hits += 1
                 if   entry.flag == TTFlag.EXACT:      return entry.score
                 elif entry.flag == TTFlag.LOWERBOUND: alpha = max(alpha, entry.score)
                 elif entry.flag == TTFlag.UPPERBOUND: beta  = min(beta,  entry.score)
                 if alpha >= beta:
-                    return entry.score
+                    return entry.score  # Pruning via TT
             tt_best = entry.best_move
 
         if depth == 0:
@@ -257,7 +289,9 @@ class TranspositionAgent:
                     self.history_table[(move.origin, move.destination)] += 2 ** depth
                     break
 
+        # === TT storage ===
         if self.use_tt:
+            # Determine entry flag based on final value relative to original window
             if   value <= orig_alpha: flag = TTFlag.UPPERBOUND
             elif value >= orig_beta:  flag = TTFlag.LOWERBOUND
             else:                     flag = TTFlag.EXACT
@@ -267,6 +301,12 @@ class TranspositionAgent:
 
     def _tt_store(self, h: int, score: float, depth: int,
                   flag: TTFlag, best_move: Optional[Move]):
+        """
+        Store (or update) a transposition table entry at position hash h.
+        
+        If table is full, evict an arbitrary old entry (simple replacement strategy).
+        Better strategies like LRU or age-based eviction could be used if needed.
+        """
         if len(self.tt) >= self.MAX_TT_SIZE:
             self.tt.pop(next(iter(self.tt)))
         self.tt[h] = TTEntry(score, depth, flag, best_move)

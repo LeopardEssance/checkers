@@ -40,10 +40,15 @@ class ExperimentDataset:
 PALETTE = ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9"]
 
 def _slug(text: str) -> str:
+    """Convert text to lowercase slug (letters, numbers, underscores only)."""
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
 def _infer_experiment_prefix(games_path: str, fallback_label: str) -> str:
+    """
+    Extract experiment prefix from file name (e.g., 'exp0' from 'exp0_baseline_vs_random.json').
+    Falls back to slugified label if no match found.
+    """
     base = os.path.basename(games_path)
     match = re.match(r"(exp\d+)", base.lower())
     if match:
@@ -52,6 +57,7 @@ def _infer_experiment_prefix(games_path: str, fallback_label: str) -> str:
 
 
 def _infer_matchup_folder(games_path: str) -> str:
+    """Infer matchup type from file path (e.g., 'baseline_vs_random' or 'baseline_vs_move_ordering')."""
     path = games_path.replace("\\", "/").lower()
     if "/baseline_vs_move_ordering/" in path:
         return "baseline_vs_move_ordering"
@@ -64,6 +70,10 @@ def _infer_matchup_folder(games_path: str) -> str:
 
 
 def _infer_run_folder_name(prefix: str, summary: dict[str, Any]) -> str:
+    """
+    Infer run folder name from experiment prefix and summary metadata.
+    Format: d{depth}_n{total_games} (e.g., 'd4_n100')
+    """
     depth = summary.get("baseline_depth")
     total_games = summary.get("total_games", summary.get("num_games"))
     if depth is None or total_games is None:
@@ -72,10 +82,16 @@ def _infer_run_folder_name(prefix: str, summary: dict[str, Any]) -> str:
 
 
 def _read_json(path: str) -> Any:
+    """Load JSON file from disk."""
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def _load_dataset(label: str, games_path: str, summary_path: str) -> ExperimentDataset:
+    """
+    Load experiment dataset from two JSON files:
+      - games_path: list of per-game records
+      - summary_path: aggregated match summary dict
+    """
     games_data = _read_json(games_path)
     summary_data = _read_json(summary_path)
 
@@ -87,6 +103,7 @@ def _load_dataset(label: str, games_path: str, summary_path: str) -> ExperimentD
     return ExperimentDataset(label=label, games=games_data, summary=summary_data)
 
 def _extract_series(games: list[dict[str, Any]], key: str) -> list[float]:
+    """Extract a numeric series from list of game records by key, skipping missing values."""
     values: list[float] = []
     for g in games:
         raw = g.get(key)
@@ -97,6 +114,7 @@ def _extract_series(games: list[dict[str, Any]], key: str) -> list[float]:
 
 
 def _has_key_in_games(games: list[dict[str, Any]], key: str) -> bool:
+    """Check if key exists in any game record."""
     return any(key in g for g in games)
 
 def _dataset_meta(dataset: ExperimentDataset) -> tuple[str, str]:

@@ -357,6 +357,14 @@ def _save_graphs(
     results_dir: str = RESULTS_DIR,
     output_images_dir: str | None = None,
 ) -> list[str]:
+    """
+    Generate comparison graphs showing how each configuration scales across depths.
+    
+    Produces three charts:
+      1. Win-rate bar chart (grouped by depth, configurations as bars)
+      2. Nodes-per-move line chart with error bars (configuration lines)
+      3. Time-per-move line chart with error bars (configuration lines)
+    """
     if output_images_dir is None:
         base_dir = os.path.join(results_dir, "experiment3_scalability")
         depth_span = f"{min(summary.depths)}to{max(summary.depths)}"
@@ -369,15 +377,16 @@ def _save_graphs(
 
     output_paths: list[str] = []
 
-    # Compare each configuration against itself across depth values.
+    # Organize summaries by configuration (each configuration has multiple depths)
     by_config: dict[str, list[ScalabilityDepthConfigSummary]] = {config: [] for config in summary.configurations}
     for item in summary.depth_config_summaries:
         by_config.setdefault(item.configuration, []).append(item)
 
+    # Sort each configuration's depths in ascending order
     for config in by_config:
         by_config[config] = sorted(by_config[config], key=lambda x: x.depth)
 
-    # Win-rate comparison by depth as grouped bars.
+    # === Win-rate comparison: grouped bars (one group per depth) ===
     win_path = os.path.join(images_dir, "scalability_compare_win_rate_by_depth.png")
     fig, ax = plt.subplots(figsize=(10, 6))
     depths_sorted = sorted(summary.depths)
@@ -416,7 +425,7 @@ def _save_graphs(
     plt.close(fig)
     output_paths.append(win_path)
 
-    # Nodes-per-move comparison by depth with standard deviation bars.
+    # === Nodes-per-move: line plot with error bars ===
     nodes_path = os.path.join(images_dir, "scalability_compare_nodes_by_depth.png")
     fig, ax = plt.subplots(figsize=(10, 6))
     for configuration, points in by_config.items():
@@ -446,7 +455,7 @@ def _save_graphs(
     plt.close(fig)
     output_paths.append(nodes_path)
 
-    # Time-per-move comparison by depth with standard deviation bars.
+    # === Time-per-move: line plot with error bars ===
     time_path = os.path.join(images_dir, "scalability_compare_time_by_depth_ms.png")
     fig, ax = plt.subplots(figsize=(10, 6))
     for configuration, points in by_config.items():

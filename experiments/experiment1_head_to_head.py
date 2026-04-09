@@ -204,6 +204,12 @@ def _build_agent_with_seed(
 
 
 def _summarize_match(matchup: str, agent_a: str, agent_b: str, records: list[GameRecord]) -> MatchSummary:
+    """
+    Aggregate game records into a match summary.
+    
+    For agent_a (fixed perspective): count wins, losses, draws and compute
+    mean/std of nodes and time across all games.
+    """
     wins = sum(1 for r in records if r.agent_a_won)
     losses = sum(1 for r in records if not r.agent_a_won and not r.draw)
     draws = sum(1 for r in records if r.draw)
@@ -255,9 +261,13 @@ def run_experiment(
         print(f"\n{matchup} ...")
         match_records: list[GameRecord] = []
 
+        # Play num_games with agent_a as RED, then num_games with agent_a as BLACK
+        # to ensure fair comparison (avoid first-move advantage).
         for color_a in [RED, BLACK]:
             color_b = BLACK if color_a == RED else RED
             for _ in range(num_games):
+                # Derive deterministic but distinct seeds for each player and the opening
+                # using XOR masks to ensure reproducibility while varying randomness.
                 game_seed = run_rng.randrange(2**32)
                 agent_a = _build_agent_with_seed(
                     agent_a_name,

@@ -56,6 +56,10 @@ def _read_json(path: str) -> Any:
 
 
 def _quantile(sorted_values: list[float], q: float) -> float:
+    """
+    Compute the q-th quantile (0 <= q <= 1) using linear interpolation.
+    Assumes sorted_values is already sorted in ascending order.
+    """
     if not sorted_values:
         return 0.0
     if len(sorted_values) == 1:
@@ -72,6 +76,12 @@ def _quantile(sorted_values: list[float], q: float) -> float:
 
 
 def _binned_stats(values: list[float], max_points: int = 70) -> tuple[list[int], list[float], list[float], list[float], int]:
+    """
+    Aggregate values into bins to support readable line plots.
+    
+    Returns: (bin_end_indices, bin_means, bin_25th_percentiles, bin_75th_percentiles, bin_size)
+    This allows plotting mean ± IQR (interquartile range) as bands around a line.
+    """
     if not values:
         return [], [], [], [], 1
 
@@ -104,6 +114,12 @@ def _short_label(text: str, max_len: int = 30) -> str:
 
 
 def _discover_targets(results_root: str) -> list[PlotTarget]:
+    """
+    Recursively find all experiment result folders that contain both
+    game JSON files and summary JSON files.
+    
+    Returns: sorted list of PlotTargets (each represents a run folder with games + summary)
+    """
     candidates = {
         "experiment1_head_to_head": ("experiment1_head_to_head.json", "experiment1_summary.json"),
         "experiment2_ablation": ("experiment2_ablation.json", "experiment2_summary.json"),
@@ -135,12 +151,17 @@ def _discover_targets(results_root: str) -> list[PlotTarget]:
 
 
 def _save_figure(fig: plt.Figure, output_path: str) -> None:
+    """Finalize and save matplotlib figure, then close it to free memory."""
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
 
 
 def _plot_stacked_rates(rows: list[dict[str, Any]], label_key: str, title: str, output_path: str) -> None:
+    """
+    Plot outcome rates (wins/losses/draws) as a stacked bar chart.
+    Useful for summarizing match results across multiple conditions.
+    """
     labels = [_short_label(row.get(label_key, "Unknown")) for row in rows]
     win_rates = [float(row.get("win_rate_pct", 0.0)) for row in rows]
     loss_rates = [float(row.get("loss_rate_pct", 0.0)) for row in rows]

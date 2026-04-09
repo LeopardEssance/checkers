@@ -157,42 +157,59 @@ class Board:
         visited_captures: List[Tuple[int, int]],
         path: List[Tuple[int, int]],
     ) -> List[Move]:
-        """Recursively generate all multi-jump sequences from (row, col)."""
+        """
+        Recursively generate all multi-jump sequences from (row, col).
+        
+        Enforces American Checkers rules:
+          - A piece can capture an opponent piece at (mid_r, mid_c) and land at (land_r, land_c)
+          - Each opponent piece can only be captured once per move sequence
+          - A piece is promoted to king when reaching the far rank, ending the move immediately
+        
+        Returns all valid continuations from the landing square (if move continues) or
+        a complete Move object (if move ends via promotion/no further jumps available).
+        """
         found: List[Move] = []
 
         for dr, dc in self._move_dirs(piece):
             mid_r, mid_c   = row + dr,     col + dc
             land_r, land_c = row + 2 * dr, col + 2 * dc
 
+            # Validate landing square is within bounds
             if not (0 <= mid_r < 8 and 0 <= mid_c < 8):
                 continue
             if not (0 <= land_r < 8 and 0 <= land_c < 8):
                 continue
+            # Check middle square has opponent piece
             if not self.is_opponent(self.grid[mid_r][mid_c], player):
                 continue
+            # Check landing square is empty
             if self.grid[land_r][land_c] != EMPTY:
                 continue
+            # Prevent double-capture of same piece in one move
             if (mid_r, mid_c) in visited_captures:
                 continue
 
             new_path     = path + [(land_r, land_c)]
             new_captures = visited_captures + [(mid_r, mid_c)]
 
-            # A move ends immediately on crowning.
+            # Check for promotion (piece reaching far rank ends move immediately)
             promoted = piece
             if piece == RED_PIECE   and land_r == 0: promoted = RED_KING
             if piece == BLACK_PIECE and land_r == 7: promoted = BLACK_KING
 
             if promoted != piece:
+                # Move ends via promotion
                 found.append(Move(path=new_path, captures=new_captures))
                 continue
 
+            # Try continuing jumps from landing square
             continuations = self._get_jumps(
                 land_r, land_c, promoted, player, new_captures, new_path
             )
             if continuations:
                 found.extend(continuations)
             else:
+                # No further jumps possible; move ends here
                 found.append(Move(path=new_path, captures=new_captures))
 
         return found

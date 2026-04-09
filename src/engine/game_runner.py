@@ -146,10 +146,12 @@ def play_game(
             agent.nodes_expanded = 0
 
         if use_random_opening:
+            # During opening plies, pick a uniformly random move
             legal_moves = board.get_legal_moves(current)
             move = opening_rng.choice(legal_moves) if legal_moves else None
             elapsed = 0.0
         else:
+            # Let agent choose (time and nodes will be measured)
             t0 = time.perf_counter()
             move = agent.choose_move(board)
             elapsed = time.perf_counter() - t0
@@ -181,7 +183,8 @@ def play_game(
             print(board)
 
         # === No-progress rule (50-move rule): reset counter only on captures ===
-        # In checkers, captures are the primary "progress" indicator
+        # In checkers, captures are the primary "progress" indicator.
+        # After 50 consecutive non-capturing moves, the game is a draw.
         if len(move.captures) > 0:
             no_progress_count = 0
         else:
@@ -192,6 +195,7 @@ def play_game(
                 break
 
         # === Threefold repetition rule ===
+        # If the same board state (grid + current_player) appears 3 times, game is a draw.
         board_state_key = str(board.grid) + "|" + board.current_player
         state_history[board_state_key] = state_history.get(board_state_key, 0) + 1
         if state_history[board_state_key] >= 3:

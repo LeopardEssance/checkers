@@ -62,25 +62,41 @@ class MoveOrderingAgent:
     # ------------------------------------------------------------------
 
     def _reset_killers(self):
+        """Clear killer table at start of new search (not per-ply)."""
         self.killer_table = defaultdict(list)
 
     def _store_killer(self, ply: int, move: Move):
+        """
+        Store a killer move at given search ply.
+        
+        When a move causes a beta cutoff (prune), it's likely to be good at the same ply
+        in sibling branches. Keep up to MAX_KILLERS per ply, with most recent first.
+        """
         killers = self.killer_table[ply]
         for k in killers:
             if k.origin == move.origin and k.destination == move.destination:
-                return
+                return  # Already stored
         killers.insert(0, move)
         if len(killers) > self.MAX_KILLERS:
             killers.pop()
 
     def _killer_score(self, ply: int, move: Move) -> int:
+        """
+        Return killer score for a move at given ply (higher ranked killers score higher).
+        Rank 0 (first killer) scores MAX_KILLERS; rank 1 scores MAX_KILLERS-1, etc.
+        """
         for i, k in enumerate(self.killer_table.get(ply, [])):
             if k.origin == move.origin and k.destination == move.destination:
                 return self.MAX_KILLERS - i
         return 0
 
     def _order_moves(self, moves: List[Move], ply: int) -> List[Move]:
-        """Sort moves by combined priority (descending)."""
+        """
+        Sort moves by combined priority (descending):
+          1. Captures (highest weight: 10,000 per opponent piece captured)
+          2. Killer moves (1,000 per unit of killer score)
+          3. History heuristic (cumulative cutoff count)
+        """
         def key(m: Move):
             cap     = len(m.captures) * 10_000
             killer  = self._killer_score(ply, m) * 1_000 if self.use_killer  else 0

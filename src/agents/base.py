@@ -37,38 +37,47 @@ CENTER_SQUARES = {(3, 2), (3, 4), (4, 1), (4, 3), (4, 5), (3, 3), (4, 2), (4, 4)
 
 def evaluate(board: Board, player: str) -> float:
     """
-    h(s) = w1*M + w2*K + w3*L + w4*P + w5*C
-
-    Positive = advantageous for `player`.
+    Heuristic evaluation function: h(s) = w1*M + w2*K + w3*L + w4*P + w5*C
+    
+    Positive score favors the given player. Components:
+      M (Material): piece count advantage (regular pieces)
+      K (Kings):    king count advantage
+      L (Mobility): legal move count advantage
+      P (Promotion): bonus for pieces close to promotion rank
+      C (Center):   control of central board squares
+    
+    Weights are tuned to balance piece advantage with positional advantage.
     """
     opponent = BLACK if player == RED else RED
 
     my_pieces  = board.pieces_of(player)
     opp_pieces = board.pieces_of(opponent)
 
-    # M — material
+    # M — material (piece count; kings will be counted separately)
     M = len(my_pieces) - len(opp_pieces)
 
-    # K — kings
+    # K — kings (more valuable than regular pieces)
     my_kings  = sum(1 for _, _, p in my_pieces  if board.is_king(p))
     opp_kings = sum(1 for _, _, p in opp_pieces if board.is_king(p))
     K = my_kings - opp_kings
 
-    # L — mobility
+    # L — mobility (more moves = better position)
     L = len(board.get_legal_moves(player)) - len(board.get_legal_moves(opponent))
 
-    # P — promotion potential
+    # P — promotion potential (pieces near opponent's back rank score bonus)
     def promo(pieces, color):
         score = 0
         for r, _, p in pieces:
             if board.is_king(p):
                 continue
+            # RED moves toward row 0: max distance = 7 (row 7)
+            # BLACK moves toward row 7: max distance = 7 (row 0)
             score += max(0, 3 - r) * 0.5 if color == RED else max(0, r - 4) * 0.5
         return score
 
     P = promo(my_pieces, player) - promo(opp_pieces, opponent)
 
-    # C — center control
+    # C — center control (defined squares near board center)
     C = (sum(1 for r, c, _ in my_pieces  if (r, c) in CENTER_SQUARES) -
           sum(1 for r, c, _ in opp_pieces if (r, c) in CENTER_SQUARES))
 
@@ -142,15 +151,26 @@ class BaselineAgent:
 
     def _minimax(self, board: Board, depth: int,
                   alpha: float, beta: float, maximizing: bool) -> float:
+        """
+        Minimax with alpha-beta pruning.
+        
+        Maximizing player tries to maximize the score; minimizing player tries to minimize.
+        Alpha: best score found so far for maximizing player (lower bound).
+        Beta:  best score found so far for minimizing player (upper bound).
+        When alpha >= beta, pruning occurs: branch cannot improve outcome further.
+        """
         self.nodes_expanded += 1
 
+        # Stop search if time limit exceeded and return heuristic evaluation
         if time.time() - self.start_time >= self.time_limit:
             return evaluate(board, self.player)
 
+        # Terminal states return fixed scores (win/loss/draw for player's perspective)
         terminal_val = board.terminal_score(self.player)
         if terminal_val is not None:
             return terminal_val
 
+        # Leaf node: evaluate board heuristically
         if depth == 0:
             return evaluate(board, self.player)
 
@@ -167,7 +187,7 @@ class BaselineAgent:
                     board.apply_move(move), depth - 1, alpha, beta, False))
                 alpha = max(alpha, value)
                 if alpha >= beta:
-                    break
+                    break  # Beta cutoff: minimizing player won't allow this branch
             return value
         else:
             value = float("inf")
@@ -176,7 +196,7 @@ class BaselineAgent:
                     board.apply_move(move), depth - 1, alpha, beta, True))
                 beta = min(beta, value)
                 if beta <= alpha:
-                    break
+                    break  # Alpha cutoff: maximizing player won't allow this branch
             return value
 
 # ---------------------------------------------------------------------------
