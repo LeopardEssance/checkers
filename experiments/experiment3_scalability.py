@@ -265,6 +265,16 @@ def run_experiment(
 
                     all_records.append(record)
                     bucket.append(record)
+
+                    status = "WIN" if record.config_won else ("DRAW" if record.draw else "LOSS")
+                    side = "RED" if record.config_side == RED else "BLK"
+                    print(
+                        f"    Game {game_id + 1:>4}  [{side}]  {status:4}  "
+                        f"moves={record.total_moves:>3}  "
+                        f"{configuration} nodes/move={record.config_avg_nodes_per_move:>8.1f}  "
+                        f"ms/move={record.config_avg_time_per_move_ms:>7.2f}"
+                    )
+
                     game_id += 1
 
             summary = _summarize_depth_config(depth, configuration, bucket)
