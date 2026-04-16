@@ -54,7 +54,7 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-⚠️ **Important:** Always run `pip install -r requirements.txt` after creating or activating your virtual environment. The experiments will fail without matplotlib and pytest installed.
+**Important:** Always run `pip install -r requirements.txt` after creating or activating your virtual environment. The experiments will fail without matplotlib and pytest installed.
 
 **Dependencies** (`requirements.txt`):
 
