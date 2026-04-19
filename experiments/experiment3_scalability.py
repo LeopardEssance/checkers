@@ -19,6 +19,7 @@ Run:
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import random
@@ -104,6 +105,19 @@ class ScalabilityExperimentSummary:
     depth_config_summaries: list[ScalabilityDepthConfigSummary]
 
 
+@dataclass(frozen=True)
+class ScalabilityGameJob:
+    game_id: int
+    depth: int
+    configuration: str
+    config_side: str
+    time_limit: float
+    stochastic_tiebreak: bool
+    opening_random_plies: int
+    game_seed: int
+    verbose: bool
+
+
 def _build_scalability_agent(
     name: str,
     player: str,
@@ -160,6 +174,70 @@ def _summarize_depth_config(
     )
 
 
+def _run_scalability_game_job(job: ScalabilityGameJob) -> ScalabilityGameRecord:
+    config_side = job.config_side
+    random_side = BLACK if config_side == RED else RED
+
+    agent_config = _build_scalability_agent(
+        job.configuration,
+        config_side,
+        job.depth,
+        job.time_limit,
+        rng_seed=job.game_seed ^ 0xA5A5A5A5,
+        stochastic_tiebreak=job.stochastic_tiebreak,
+    )
+    agent_random = RandomAgent(random_side, rng=random.Random(job.game_seed ^ 0x5A5A5A5A))
+    opening_rng = random.Random(job.game_seed ^ 0xC3C3C3C3)
+
+    if config_side == RED:
+        result = play_game(
+            agent_config,
+            agent_random,
+            tracked_player=RED,
+            opening_random_plies=job.opening_random_plies,
+            opening_rng=opening_rng,
+            verbose=job.verbose,
+        )
+    else:
+        result = play_game(
+            agent_random,
+            agent_config,
+            tracked_player=BLACK,
+            opening_random_plies=job.opening_random_plies,
+            opening_rng=opening_rng,
+            verbose=job.verbose,
+        )
+
+    return ScalabilityGameRecord(
+        game_id=job.game_id,
+        depth=job.depth,
+        configuration=job.configuration,
+        config_side=config_side,
+        winner=result.winner,
+        config_won=(result.winner == config_side),
+        draw=result.draw,
+        draw_reason=result.draw_reason,
+        move_limit_hit=result.move_limit_hit,
+        total_moves=result.total_moves,
+        config_avg_nodes_per_move=(
+            result.avg_nodes_per_move_red if config_side == RED else result.avg_nodes_per_move_black
+        ),
+        config_avg_time_per_move_ms=(
+            result.avg_time_per_move_red_s * 1000.0
+            if config_side == RED
+            else result.avg_time_per_move_black_s * 1000.0
+        ),
+        random_avg_nodes_per_move=(
+            result.avg_nodes_per_move_black if config_side == RED else result.avg_nodes_per_move_red
+        ),
+        random_avg_time_per_move_ms=(
+            result.avg_time_per_move_black_s * 1000.0
+            if config_side == RED
+            else result.avg_time_per_move_red_s * 1000.0
+        ),
+    )
+
+
 def run_experiment(
     games_per_side: int = NUM_GAMES,
     depths: list[int] | None = None,
@@ -167,141 +245,126 @@ def run_experiment(
     stochastic_tiebreak: bool = True,
     opening_random_plies: int = 0,
     seed: int | None = None,
+    max_workers: int | None = None,
     verbose: bool = False,
+    show_progress: bool = True,
 ) -> tuple[list[ScalabilityGameRecord], ScalabilityExperimentSummary]:
     if depths is None:
         depths = DEPTHS
 
     depths = sorted(set(depths))
 
-    print("=" * 72)
-    print("Experiment 3: Scalability - Depth vs Performance")
-    print(f"Depths={depths} | {games_per_side * 2} games per config-depth")
-    print("Opponent: Random")
-    print(f"Stochastic tie-break: {'ON' if stochastic_tiebreak else 'OFF'}")
-    print(f"Opening random plies: {opening_random_plies}")
-    if seed is not None:
-        print(f"Seed={seed}")
-    print("=" * 72)
+    if show_progress:
+        print("=" * 72)
+        print("Experiment 3: Scalability - Depth vs Performance")
+        print(f"Depths={depths} | {games_per_side * 2} games per config-depth")
+        print("Opponent: Random")
+        print(f"Stochastic tie-break: {'ON' if stochastic_tiebreak else 'OFF'}")
+        print(f"Opening random plies: {opening_random_plies}")
+        if seed is not None:
+            print(f"Seed={seed}")
+        print("=" * 72)
 
     all_records: list[ScalabilityGameRecord] = []
     summaries: list[ScalabilityDepthConfigSummary] = []
     game_id = 0
     run_rng = random.Random(seed) if seed is not None else random.Random()
+    parallel_enabled = not verbose and (max_workers is None or max_workers > 1)
 
-    for depth in depths:
-        print(f"\nDepth {depth} ...")
-        for configuration in CONFIGS:
-            print(f"  {configuration} vs Random")
-            bucket: list[ScalabilityGameRecord] = []
+    if max_workers is not None and max_workers < 1:
+        raise ValueError("max_workers must be >= 1 or None")
 
-            for config_side in [RED, BLACK]:
-                random_side = BLACK if config_side == RED else RED
+    if show_progress and parallel_enabled:
+        worker_label = "default" if max_workers is None else str(max_workers)
+        print(f"Parallel game execution enabled (workers={worker_label})")
 
-                for _ in range(games_per_side):
-                    game_seed = run_rng.randrange(2**32)
-                    agent_config = _build_scalability_agent(
-                        configuration,
-                        config_side,
-                        depth,
-                        time_limit,
-                        rng_seed=game_seed ^ 0xA5A5A5A5,
-                        stochastic_tiebreak=stochastic_tiebreak,
-                    )
-                    agent_random = RandomAgent(random_side, rng=random.Random(game_seed ^ 0x5A5A5A5A))
-                    opening_rng = random.Random(game_seed ^ 0xC3C3C3C3)
+    executor_cm = (
+        concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+        if parallel_enabled
+        else None
+    )
 
-                    if config_side == RED:
-                        result = play_game(
-                            agent_config,
-                            agent_random,
-                            tracked_player=RED,
-                            opening_random_plies=opening_random_plies,
-                            opening_rng=opening_rng,
-                            verbose=verbose,
+    if executor_cm is None:
+        executor_context = None
+    else:
+        executor_context = executor_cm.__enter__()
+
+    try:
+        for depth in depths:
+            if show_progress:
+                print(f"\nDepth {depth} ...")
+            for configuration in CONFIGS:
+                if show_progress:
+                    print(f"  {configuration} vs Random")
+                bucket: list[ScalabilityGameRecord] = []
+                jobs: list[ScalabilityGameJob] = []
+
+                for config_side in [RED, BLACK]:
+                    for _ in range(games_per_side):
+                        jobs.append(
+                            ScalabilityGameJob(
+                                game_id=game_id,
+                                depth=depth,
+                                configuration=configuration,
+                                config_side=config_side,
+                                time_limit=time_limit,
+                                stochastic_tiebreak=stochastic_tiebreak,
+                                opening_random_plies=opening_random_plies,
+                                game_seed=run_rng.randrange(2**32),
+                                verbose=verbose,
+                            )
                         )
-                    else:
-                        result = play_game(
-                            agent_random,
-                            agent_config,
-                            tracked_player=BLACK,
-                            opening_random_plies=opening_random_plies,
-                            opening_rng=opening_rng,
-                            verbose=verbose,
-                        )
+                        game_id += 1
 
-                    record = ScalabilityGameRecord(
-                        game_id=game_id,
-                        depth=depth,
-                        configuration=configuration,
-                        config_side=config_side,
-                        winner=result.winner,
-                        config_won=(result.winner == config_side),
-                        draw=result.draw,
-                        draw_reason=result.draw_reason,
-                        move_limit_hit=result.move_limit_hit,
-                        total_moves=result.total_moves,
-                        config_avg_nodes_per_move=(
-                            result.avg_nodes_per_move_red
-                            if config_side == RED
-                            else result.avg_nodes_per_move_black
-                        ),
-                        config_avg_time_per_move_ms=(
-                            result.avg_time_per_move_red_s * 1000.0
-                            if config_side == RED
-                            else result.avg_time_per_move_black_s * 1000.0
-                        ),
-                        random_avg_nodes_per_move=(
-                            result.avg_nodes_per_move_black
-                            if config_side == RED
-                            else result.avg_nodes_per_move_red
-                        ),
-                        random_avg_time_per_move_ms=(
-                            result.avg_time_per_move_black_s * 1000.0
-                            if config_side == RED
-                            else result.avg_time_per_move_red_s * 1000.0
-                        ),
-                    )
+                if executor_context is None:
+                    records = [_run_scalability_game_job(job) for job in jobs]
+                else:
+                    records = list(executor_context.map(_run_scalability_game_job, jobs))
 
+                for record in records:
                     all_records.append(record)
                     bucket.append(record)
 
-                    status = "WIN" if record.config_won else ("DRAW" if record.draw else "LOSS")
-                    side = "RED" if record.config_side == RED else "BLK"
+                    if show_progress:
+                        status = "WIN" if record.config_won else ("DRAW" if record.draw else "LOSS")
+                        side = "RED" if record.config_side == RED else "BLK"
+                        print(
+                            f"    Game {record.game_id + 1:>4}  [{side}]  {status:4}  "
+                            f"moves={record.total_moves:>3}  "
+                            f"{configuration} nodes/move={record.config_avg_nodes_per_move:>8.1f}  "
+                            f"ms/move={record.config_avg_time_per_move_ms:>7.2f}"
+                        )
+
+                summary = _summarize_depth_config(depth, configuration, bucket)
+                summaries.append(summary)
+                if show_progress:
                     print(
-                        f"    Game {game_id + 1:>4}  [{side}]  {status:4}  "
-                        f"moves={record.total_moves:>3}  "
-                        f"{configuration} nodes/move={record.config_avg_nodes_per_move:>8.1f}  "
-                        f"ms/move={record.config_avg_time_per_move_ms:>7.2f}"
+                        f"    W={summary.wins} L={summary.losses} D={summary.draws} "
+                        f"({summary.win_rate_pct:.1f}%) | "
+                        f"AvgNodes={summary.avg_nodes_per_move_mean:,.1f} | "
+                        f"AvgTime={summary.avg_time_per_move_ms_mean:.3f}ms"
                     )
+    finally:
+        if executor_cm is not None:
+            executor_cm.__exit__(None, None, None)
 
-                    game_id += 1
-
-            summary = _summarize_depth_config(depth, configuration, bucket)
-            summaries.append(summary)
-            print(
-                f"    W={summary.wins} L={summary.losses} D={summary.draws} "
-                f"({summary.win_rate_pct:.1f}%) | "
-                f"AvgNodes={summary.avg_nodes_per_move_mean:,.1f} | "
-                f"AvgTime={summary.avg_time_per_move_ms_mean:.3f}ms"
-            )
-
-    print("\n" + "=" * 92)
-    print(
-        f"{'Depth':<7} {'Configuration':<13} {'W-L-D':<12} {'Win%':>6} "
-        f"{'Nodes/move (mean+-sd)':>24} {'Time ms/move (mean+-sd)':>29}"
-    )
-    print("-" * 92)
-    for summary in sorted(summaries, key=lambda item: (item.depth, item.configuration)):
-        wld = f"{summary.wins}-{summary.losses}-{summary.draws}"
+    if show_progress:
+        print("\n" + "=" * 92)
         print(
-            f"{summary.depth:<7} "
-            f"{summary.configuration:<13} "
-            f"{wld:<12} "
-            f"{summary.win_rate_pct:>5.1f}% "
-            f"{summary.avg_nodes_per_move_mean:>8.1f}+-{summary.avg_nodes_per_move_std:<8.1f} "
-            f"{summary.avg_time_per_move_ms_mean:>9.2f}+-{summary.avg_time_per_move_ms_std:<9.2f}"
+            f"{'Depth':<7} {'Configuration':<13} {'W-L-D':<12} {'Win%':>6} "
+            f"{'Nodes/move (mean+-sd)':>24} {'Time ms/move (mean+-sd)':>29}"
         )
+        print("-" * 92)
+        for summary in sorted(summaries, key=lambda item: (item.depth, item.configuration)):
+            wld = f"{summary.wins}-{summary.losses}-{summary.draws}"
+            print(
+                f"{summary.depth:<7} "
+                f"{summary.configuration:<13} "
+                f"{wld:<12} "
+                f"{summary.win_rate_pct:>5.1f}% "
+                f"{summary.avg_nodes_per_move_mean:>8.1f}+-{summary.avg_nodes_per_move_std:<8.1f} "
+                f"{summary.avg_time_per_move_ms_mean:>9.2f}+-{summary.avg_time_per_move_ms_std:<9.2f}"
+            )
 
     experiment_summary = ScalabilityExperimentSummary(
         depths=depths,
@@ -319,6 +382,7 @@ def save_results(
     records: list[ScalabilityGameRecord],
     summary: ScalabilityExperimentSummary,
     results_dir: str = RESULTS_DIR,
+    show_progress: bool = True,
 ) -> None:
     base_dir = os.path.join(results_dir, "experiment3_scalability")
     os.makedirs(base_dir, exist_ok=True)
@@ -345,11 +409,12 @@ def save_results(
     with open(latest_summary_path, "w", encoding="utf-8") as file_handle:
         json.dump(asdict(summary), file_handle, indent=2)
 
-    print("\nResults saved:")
-    print(f"  {run_games_path}")
-    print(f"  {run_summary_path}")
-    print(f"  {latest_games_path}")
-    print(f"  {latest_summary_path}")
+    if show_progress:
+        print("\nResults saved:")
+        print(f"  {run_games_path}")
+        print(f"  {run_summary_path}")
+        print(f"  {latest_games_path}")
+        print(f"  {latest_summary_path}")
 
 
 def _save_graphs(
@@ -545,15 +610,27 @@ if __name__ == "__main__":
         help="Number of opening plies chosen randomly before normal search",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Process workers for parallel game execution (default: CPU count). Use 1 for serial mode.",
+    )
+    parser.add_argument(
         "--plot-from-run-dir",
         type=str,
         default=None,
         help="Reuse an existing run directory and regenerate graphs from experiment3_summary.json without running games",
     )
     parser.add_argument("--verbose", action="store_true", help="Print board each move")
+    parser.add_argument(
+        "--done-only",
+        action="store_true",
+        help="Suppress progress output and print only a final Done line",
+    )
     parser.add_argument("--no-save", action="store_true", help="Skip writing results to disk")
     parser.add_argument("--no-plot", action="store_true", help="Skip graph generation")
     args = parser.parse_args()
+    show_progress = not args.done_only
 
     if args.plot_from_run_dir:
         summary_path = os.path.join(args.plot_from_run_dir, "experiment3_summary.json")
@@ -565,9 +642,11 @@ if __name__ == "__main__":
             summary,
             output_images_dir=os.path.join(args.plot_from_run_dir, "images"),
         )
-        print("\nSaved graphs from existing run:")
-        for graph_path in graph_paths:
-            print(f"  {graph_path}")
+        if show_progress:
+            print("\nSaved graphs from existing run:")
+            for graph_path in graph_paths:
+                print(f"  {graph_path}")
+        print("Done")
         raise SystemExit(0)
 
     records, summary = run_experiment(
@@ -577,16 +656,21 @@ if __name__ == "__main__":
         stochastic_tiebreak=args.stochastic_tiebreak,
         opening_random_plies=max(0, args.opening_random_plies),
         seed=args.seed,
+        max_workers=args.workers,
         verbose=args.verbose,
+        show_progress=show_progress,
     )
 
     if not args.no_save:
-        save_results(records, summary)
+        save_results(records, summary, show_progress=show_progress)
 
     if args.no_plot:
+        print("Done")
         raise SystemExit(0)
 
     graph_paths = _save_graphs(summary)
-    print("\nSaved graphs:")
-    for graph_path in graph_paths:
-        print(f"  {graph_path}")
+    if show_progress:
+        print("\nSaved graphs:")
+        for graph_path in graph_paths:
+            print(f"  {graph_path}")
+    print("Done")
