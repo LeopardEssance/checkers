@@ -252,7 +252,6 @@ results/
         │   ├── exp0_baseline_vs_random.json   # Per-game records
         │   └── exp0_summary.json              # Aggregate statistics
         │   └── images/                        # Charts
-        └── exp0_baseline_vs_random.json       # Latest snapshot
 ```
 
 ---

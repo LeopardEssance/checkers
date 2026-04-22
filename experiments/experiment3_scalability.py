@@ -394,8 +394,6 @@ def save_results(
 
     run_games_path = os.path.join(run_dir, "experiment3_scalability.json")
     run_summary_path = os.path.join(run_dir, "experiment3_summary.json")
-    latest_games_path = os.path.join(base_dir, "experiment3_scalability.json")
-    latest_summary_path = os.path.join(base_dir, "experiment3_summary.json")
 
     with open(run_games_path, "w", encoding="utf-8") as file_handle:
         json.dump([asdict(record) for record in records], file_handle, indent=2)
@@ -403,18 +401,10 @@ def save_results(
     with open(run_summary_path, "w", encoding="utf-8") as file_handle:
         json.dump(asdict(summary), file_handle, indent=2)
 
-    with open(latest_games_path, "w", encoding="utf-8") as file_handle:
-        json.dump([asdict(record) for record in records], file_handle, indent=2)
-
-    with open(latest_summary_path, "w", encoding="utf-8") as file_handle:
-        json.dump(asdict(summary), file_handle, indent=2)
-
     if show_progress:
         print("\nResults saved:")
         print(f"  {run_games_path}")
         print(f"  {run_summary_path}")
-        print(f"  {latest_games_path}")
-        print(f"  {latest_summary_path}")
 
 
 def _save_graphs(

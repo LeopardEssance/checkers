@@ -25,10 +25,6 @@ OUTPUT
 ------
     results/exp0/transposition_vs_random/d{depth}_n{games}/exp0_transposition_vs_random.json
     results/exp0/transposition_vs_random/d{depth}_n{games}/exp0_transposition_summary.json
-
-  plus latest snapshots:
-    results/exp0/transposition_vs_random/exp0_transposition_vs_random.json
-    results/exp0/transposition_vs_random/exp0_transposition_summary.json
 """
 
 from __future__ import annotations
@@ -356,26 +352,15 @@ def save_results(
     run_games_path = os.path.join(run_dir, "exp0_transposition_vs_random.json")
     run_summary_path = os.path.join(run_dir, "exp0_transposition_summary.json")
 
-    latest_games_path = os.path.join(base_dir, "exp0_transposition_vs_random.json")
-    latest_summary_path = os.path.join(base_dir, "exp0_transposition_summary.json")
-
     with open(run_games_path, "w", encoding="utf-8") as f:
         json.dump([asdict(record) for record in records], f, indent=2)
 
     with open(run_summary_path, "w", encoding="utf-8") as f:
         json.dump(asdict(summary), f, indent=2)
 
-    with open(latest_games_path, "w", encoding="utf-8") as f:
-        json.dump([asdict(record) for record in records], f, indent=2)
-
-    with open(latest_summary_path, "w", encoding="utf-8") as f:
-        json.dump(asdict(summary), f, indent=2)
-
     print("\nResults saved:")
     print(f"  {run_games_path}")
     print(f"  {run_summary_path}")
-    print(f"  {latest_games_path}")
-    print(f"  {latest_summary_path}")
 
 
 if __name__ == "__main__":

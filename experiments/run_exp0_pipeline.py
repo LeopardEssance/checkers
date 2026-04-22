@@ -87,7 +87,7 @@ def _save_combined_stats(
     games: int,
     baseline_summary: dict[str, Any],
     transposition_summary: dict[str, Any],
-) -> tuple[str, str]:
+) -> str:
     os.makedirs(output_root, exist_ok=True)
 
     baseline_nodes = float(baseline_summary.get("avg_nodes_per_move_mean", 0.0))
@@ -126,15 +126,11 @@ def _save_combined_stats(
     os.makedirs(run_dir, exist_ok=True)
 
     run_path = os.path.join(run_dir, "exp0_combined_stats.json")
-    latest_path = os.path.join(output_root, "exp0_combined_stats.json")
 
     with open(run_path, "w", encoding="utf-8") as f:
         json.dump(combined, f, indent=2)
 
-    with open(latest_path, "w", encoding="utf-8") as f:
-        json.dump(combined, f, indent=2)
-
-    return run_path, latest_path
+    return run_path
 
 
 def _save_three_way_stats(
@@ -144,7 +140,7 @@ def _save_three_way_stats(
     baseline_summary: dict[str, Any],
     ordering_summary: dict[str, Any],
     transposition_summary: dict[str, Any],
-) -> tuple[str, str]:
+) -> str:
     os.makedirs(output_root, exist_ok=True)
 
     combined = {
@@ -162,15 +158,11 @@ def _save_three_way_stats(
     os.makedirs(run_dir, exist_ok=True)
 
     run_path = os.path.join(run_dir, "exp0_three_way_comparison.json")
-    latest_path = os.path.join(output_root, "exp0_three_way_comparison.json")
 
     with open(run_path, "w", encoding="utf-8") as f:
         json.dump(combined, f, indent=2)
 
-    with open(latest_path, "w", encoding="utf-8") as f:
-        json.dump(combined, f, indent=2)
-
-    return run_path, latest_path
+    return run_path
 
 
 def _run_single_mode(
@@ -292,7 +284,7 @@ def main() -> None:
 
         if not args.no_save:
             comparison_root = os.path.join("results", "exp0", "baseline_vs_transposition")
-            run_path, latest_path = _save_combined_stats(
+            run_path = _save_combined_stats(
                 output_root=comparison_root,
                 depth=args.depth,
                 games=args.games,
@@ -301,7 +293,6 @@ def main() -> None:
             )
             print("\nSaved combined stats:")
             print(f"  {run_path}")
-            print(f"  {latest_path}")
 
         if args.no_plot:
             return
@@ -350,7 +341,7 @@ def main() -> None:
     )
 
     if not args.no_save:
-        run_path, latest_path = _save_three_way_stats(
+        run_path = _save_three_way_stats(
             output_root=os.path.join("results", "exp0", "three_way_comparison"),
             depth=args.depth,
             games=args.games,
@@ -360,7 +351,6 @@ def main() -> None:
         )
         print("\nSaved combined stats:")
         print(f"  {run_path}")
-        print(f"  {latest_path}")
 
     if args.no_plot:
         return

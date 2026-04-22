@@ -410,8 +410,6 @@ def save_results(
 
     run_games_path = os.path.join(run_dir, "experiment4_baseline_vs_nopruning.json")
     run_summary_path = os.path.join(run_dir, "experiment4_summary.json")
-    latest_games_path = os.path.join(base_dir, "experiment4_baseline_vs_nopruning.json")
-    latest_summary_path = os.path.join(base_dir, "experiment4_summary.json")
 
     with open(run_games_path, "w", encoding="utf-8") as f:
         json.dump([asdict(r) for r in records], f, indent=2)
@@ -419,17 +417,9 @@ def save_results(
     with open(run_summary_path, "w", encoding="utf-8") as f:
         json.dump(asdict(summary), f, indent=2)
 
-    with open(latest_games_path, "w", encoding="utf-8") as f:
-        json.dump([asdict(r) for r in records], f, indent=2)
-
-    with open(latest_summary_path, "w", encoding="utf-8") as f:
-        json.dump(asdict(summary), f, indent=2)
-
     print(f"\nResults saved:")
     print(f"  {run_games_path}")
     print(f"  {run_summary_path}")
-    print(f"  {latest_games_path}")
-    print(f"  {latest_summary_path}")
 
 def _save_graphs(
     summary: ExperimentSummary,
