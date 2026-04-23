@@ -7,7 +7,6 @@ TODO note to self: add another way to run this
 
 PURPOSE
 -------
-This is a prerequisite validity check, not a comparison experiment.
 Before any enhancement can be evaluated, the baseline agent must
 demonstrate near-perfect dominance over a random opponent.
 
@@ -31,8 +30,6 @@ OUTPUT
 ------
     results/exp0/baseline_vs_random/d{depth}_n{games}/exp0_baseline_vs_random.json  — per-run full per-game data
     results/exp0/baseline_vs_random/d{depth}_n{games}/exp0_summary.json             — per-run aggregate stats
-    results/exp0/baseline_vs_random/exp0_baseline_vs_random.json                     — latest per-game snapshot
-    results/exp0/baseline_vs_random/exp0_summary.json                                — latest summary snapshot
 """
 
 from __future__ import annotations

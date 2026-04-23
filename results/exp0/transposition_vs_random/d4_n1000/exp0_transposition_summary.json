@@ -1,0 +1,23 @@
+{
+  "total_games": 1000,
+  "wins": 995,
+  "losses": 0,
+  "draws": 5,
+  "win_rate_pct": 99.5,
+  "loss_rate_pct": 0.0,
+  "draw_rate_pct": 0.5,
+  "avg_nodes_per_move_mean": 202.57270416532947,
+  "avg_nodes_per_move_std": 34.321323380953395,
+  "avg_time_per_move_ms_mean": 22.466206161227234,
+  "avg_time_per_move_ms_std": 3.6492668114148206,
+  "avg_tt_hits_mean": 545.423,
+  "avg_tt_hits_std": 383.4905723614208,
+  "avg_tt_hit_rate_pct_mean": 1054.9360118825282,
+  "avg_tt_hit_rate_pct_std": 411.3604336153032,
+  "game_length_mean": 48.681,
+  "game_length_std": 11.971990960887315,
+  "baseline_depth": 4,
+  "transposition_depth": 4,
+  "num_games": 1000,
+  "timestamp": "2026-04-22T14:11:45"
+}
